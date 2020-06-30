@@ -18,7 +18,7 @@ We can use Makefile to generate .place in /bin, and operate it.
 -       作業報告檔: report.pdf
 -       程式執行檔: /bin/fp
 -	輸入測資檔: /input_pa3
--       輔助資料檔: /lob
+-       輔助資料檔: /lib
 
 程式問題是要安置一群組件用最小的成本(繞線長度+框架尺寸).
 我們可以使用Makefile在/bin內生成.place, 並且執行這個程式.
