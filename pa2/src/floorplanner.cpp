@@ -3,7 +3,6 @@
 #include <vector>
 #include <assert.h>
 #include <math.h>
-#include <time.h>
 #include "floorplanner.h"
 using namespace std;
 
@@ -68,9 +67,16 @@ void Floorplanner::parseInput_net(fstream& inFile){
 }
 
 void Floorplanner::packing(Macro* root){
+	_name2Mac[root->getBlkName()] = root;
+	
+	//bool tall = (height>=width);
 	for(int i=0; i<numBlk; ++i){
-		_macList.push_back(new Macro(_blkList[i]->getName()));
-		if(_blkList[i]->getHeight()>_blkList[i]->getWidth()) _blkList[i]->setRotate();
+		string name = _blkList[i]->getName();
+		_macList.push_back(new Macro(name));
+		if(_name2Mac.count(name) == 0) _name2Mac[name] = _macList[i];
+		
+		//if(tall && _blkList[i]->getWidth()>_blkList[i]->getHeight()) _blkList[i]->setRotate();
+		//else if(!tall && _blkList[i]->getHeight()>_blkList[i]->getWidth()) _blkList[i]->setRotate();
 	}
 	
 	root->setLeft(_macList[0]);
@@ -94,120 +100,133 @@ void Floorplanner::packing(Macro* root){
 void Floorplanner::floorplan(double alpha){
 	packing(_BTreeRoot);
 	for(double T=1000; T>1; T*=0.9){
-		for(int i=0; i<2000*15/numBlk; ++i){
+		int iteration;
+		if(T>100)		iteration = 500;
+		else if(T>30)	iteration = 1000;
+		else			iteration = 500;
+
+		for(int i=0; i<iteration; ++i){
 			//Compute cost(S) = cost1
 			double X, H, W; 
 			double cost1 = buildplan(alpha, X, H, W);
+			if(cost1 <= 0){
+				buildplan(alpha, outputX, outputH, outputW);
+				return;
+			}
 			clear();
-		
+
 			//Compute cost(S') = cost2
-			double prob = (double) rand() / (RAND_MAX + 1.0);
+			int prob = rand() % 3;
 			//Useless variable
 			double x, h, w;
 			double cost2;
-			//prob < 0.33
-			//OP1: To rotate one block
-			if(prob < 0.33){
-				int chosen = rand() % numBlk;
-				_blkList[chosen]->setRotate();
-				cost2 = buildplan(alpha,x ,h, w);
-				clear();
-				double prob2 = (double) rand() / (RAND_MAX + 1.0);
-				if(cost1 < cost2 && prob2 >= exp((double)(cost1-cost2)/T)){
+			switch(prob){
+				//prob < 0.33
+				//OP1: To rotate one block
+				case 0:{
+					int chosen = rand() % numBlk;
 					_blkList[chosen]->setRotate();
-				}
-			}
-			//0.33 <= prob < 0.66 
-    	    else if(prob < 0.66){
-    	    	//To count #leaf and choose which one
-				int count = 0;
-    	    	for(int i=0; i<_macList.size(); ++i){
-   		     		if(_macList[i]->getLeft()==NULL && _macList[i]->getRight()==NULL) ++count;
-				}
-				int chosnum = (rand() % count) +1;
-				assert(chosnum <= count);
-				//To remove the chosen leaf
-				bool done1 = 0;
-				count = 0;
-				int chosidx = 0;
-				Macro* macro1 = NULL;
-				Macro* parent = NULL;
-				bool side1 = 0;
-     		   	for(int i=0; i<_macList.size(); ++i){
-    	    		if(_macList[i]->getLeft()==NULL && _macList[i]->getRight()==NULL) ++count;
-    	    		if(count == chosnum){
-    	    			chosidx = i;
-    	    			macro1 = _macList[i]; 
-    	    			parent = macro1->getPrev();
-    	    			if(parent->getLeft()!=NULL && parent->getLeft()->getBlkName()==macro1->getBlkName())       side1 = 0;
-    	    			else if(parent->getRight()!=NULL && parent->getRight()->getBlkName()==macro1->getBlkName()) side1 = 1;
-    	    			else                                                            assert(0);
-						done1 = 1;
-   		     			break;
+					cost2 = buildplan(alpha,x ,h, w);
+					clear();
+					double prob2 = (double) rand() / (RAND_MAX + 1.0);
+					if(cost1 < cost2 && prob2 >= exp((double)(cost1-cost2)/T)){
+						_blkList[chosen]->setRotate();
 					}
+					break;
 				}
-				assert(done1 == 1);
-   		     	if(side1 == 0) parent->setLeft(NULL);
-				else           parent->setRight(NULL);
-				macro1->setPrev(NULL);
+				//0.33 <= prob < 0.66
+				//OP2: To remove chosen leaf and insert into hole
+				case 1:{
+    	    		//To count #leaf and choose which one
+					int count = 0;
+    	    		for(int i=0; i<_macList.size(); ++i){ 
+						if(_macList[i]->getLeft()==NULL && _macList[i]->getRight()==NULL) ++count;
+					}
+					int chosnum = (rand() % count) +1;
+
+					//To visit the chosen leaf and remove it!
+					int chosleaf;
+					bool sideleaf;
+					count = 0;
+					for(int i=0; i<_macList.size(); ++i){
+						if(_macList[i]->getLeft()==NULL && _macList[i]->getRight()==NULL) ++count;
+						if(count == chosnum){
+							chosleaf = i;
+							break;
+						}
+					}
+					Macro* macro1 = _macList[chosleaf];
+					Macro* parent = _macList[chosleaf]->getPrev();
+					if(parent->getLeft()!=NULL && parent->getLeft()->getBlkName()==macro1->getBlkName())		sideleaf = 0;
+					else if(parent->getRight()!=NULL && parent->getRight()->getBlkName()==macro1->getBlkName())	sideleaf = 1; 
+					else assert(0);
+
+					(sideleaf == 0)? parent->setLeft(NULL) : parent->setRight(NULL);
+					macro1->setPrev(NULL);
 			
-				bool done2 =0;
-				count = 0;
-				Macro* macro2 = NULL;
-				bool side2 = 0;
-				int choshole = rand() % (_macList.size()-3)+1;
-				for(int i=0; i<_macList.size(); ++i){
-					if(i!=chosidx && _macList[i]->getBlkName()!=parent->getBlkName()){
-						if(_macList[i]->getLeft()==NULL) ++count;
-						if(count == choshole){
-							macro2 = _macList[i];
-							side2 = 0;
-							done2 = 1;
-							break;
-						}
-						if(_macList[i]->getRight()==NULL) ++count;
-						if(count == choshole){
-							macro2 = _macList[i];
-							side2 = 1;
-							done2 = 1;
-							break;
-						}
+					//To count #hole and choose which one
+					count = 0;
+					for(int i=0; i<_macList.size(); ++i){
+						if(i == chosleaf) continue;
+						if(_macList[i]->getLeft()==NULL)	++count;
+						if(_macList[i]->getRight()==NULL) 	++count;
 					}
-				}
-				assert(done2 = 1);
-				if(side2 == 0) macro2->setLeft(macro1);
-				else           macro2->setRight(macro1);
-				macro1->setPrev(macro2);     	
+					chosnum = (rand() % count)+1;
+
+					//To visit the chosen hole and fillin it!
+					int choshole;
+					bool sidehole;
+					count = 0;
+					for(int i=0; i<_macList.size(); ++i){
+						if(i == chosleaf) continue;
+						if(_macList[i]->getLeft()==NULL)	++count;
+						if(count == chosnum){
+							choshole = i;
+							sidehole = 0;
+							break;
+						}
+						if(_macList[i]->getRight()==NULL) 	++count;
+						if(count == chosnum){
+							choshole = i;
+							sidehole = 1;
+							break;
+						}					
+					}
+					Macro* macro2 = _macList[choshole];
+					(sidehole == 0)? macro2->setLeft(macro1) : macro2->setRight(macro1);		  
+					macro1->setPrev(macro2);    	
     	    	
-    	 	   	cost2 = buildplan(alpha, x, h, w);
-				clear();
-				double prob2 = (double) rand() / (RAND_MAX + 1.0);
-				if(cost1 < cost2 && prob2 >=exp((double)(cost1-cost2)/T)){
-					if(side2==0) macro2->setLeft(NULL);
-					else         macro2->setRight(NULL);
-				
-					if(side1==0) parent->setLeft(macro1);
-					else         parent->setRight(macro1);
-				
-					macro1->setPrev(parent);
+    	 	   		cost2 = buildplan(alpha, x, h, w);
+					clear();
+					double prob2 = (double) rand() / (RAND_MAX + 1.0);
+					if(cost1 < cost2 && prob2 >=exp((double)(cost1-cost2)/T)){
+						(sidehole == 0)? macro2->setLeft(NULL) : macro2->setRight(NULL);		
+						(sideleaf == 0)? parent->setLeft(macro1) : parent->setRight(macro1);      		
+						macro1->setPrev(parent);
+					}
+					break;
 				}
-				else{
-				}
-			}
-			//0.66 <= prob < 1
-			//OP3: To switch two blocks 
-			else{
-				int chosen1 = rand() % numBlk;
-				int chosen2 = chosen1;
-				while(chosen2 == chosen1){
-					chosen2 = rand() % numBlk;
-				}
-				swap(_macList[chosen1], _macList[chosen2]);
-				cost2 = buildplan(alpha, x, h, w);
-				clear();
-				double prob2 = (double) rand() / (RAND_MAX + 1.0);
-				if(cost1 < cost2 && prob2 >=exp((double)(cost1-cost2)/T)){
-					swap(_macList[chosen1], _macList[chosen2]);
+				//0.66 <= prob < 1
+				//OP3: To switch two blocks 
+				case 2:{
+					int chosen1 = rand() % numBlk;
+					int chosen2 = chosen1;
+					while(chosen2 == chosen1){
+						chosen2 = rand() % numBlk;
+						if(_macList[chosen1]->getPrev()!=NULL&&_macList[chosen1]->getPrev()->getBlkName()==_macList[chosen2]->getBlkName()) chosen2 = chosen1;
+						if(_macList[chosen1]->getLeft()!=NULL&&_macList[chosen1]->getLeft()->getBlkName()==_macList[chosen2]->getBlkName()) chosen2 = chosen1;
+						if(_macList[chosen1]->getRight()!=NULL&&_macList[chosen1]->getRight()->getBlkName()==_macList[chosen2]->getBlkName()) chosen2 = chosen1;
+					} 
+					assert(chosen1 != chosen2);
+					swaprelation(chosen1, chosen2);
+					
+					cost2 = buildplan(alpha, x, h, w);
+					clear();
+					double prob2 = (double) rand() / (RAND_MAX + 1.0);
+					if(cost1 < cost2 && prob2 >=exp((double)(cost1-cost2)/T)){
+						swaprelation(chosen1, chosen2);
+					}
+					break;
 				}
 			}
 	    }	
@@ -216,9 +235,52 @@ void Floorplanner::floorplan(double alpha){
 	return;
 }
 
+void Floorplanner::swaprelation(int chosen1, int chosen2){
+	Macro* chos1	= _macList[chosen1];
+	Macro* parent1	= chos1->getPrev();
+	Macro* left1	= chos1->getLeft();
+	Macro* right1	= chos1->getRight();
+	bool side1;
+	if(parent1->getLeft()!=NULL && parent1->getLeft()->getBlkName()==chos1->getBlkName())			side1 = 0;
+	else if(parent1->getRight()!=NULL && parent1->getRight()->getBlkName()==chos1->getBlkName()) 	side1 = 1;
+	else assert(0);
+	/*
+	cout << "chos1Name = "<< chos1->getBlkName();
+	cout << " parent1Name = " << parent1->getBlkName();
+	if(left1!=NULL)cout << " left1Name = " << left1->getBlkName() << " ";
+	if(right1!=NULL)cout << " right1Name = " << right1->getBlkName() << " ";
+	cout << side1 << endl;
+	*/
+	Macro* chos2 = _macList[chosen2];
+	Macro* parent2 = chos2->getPrev();
+	Macro* left2   = chos2->getLeft();
+	Macro* right2  = chos2->getRight();
+	bool side2;
+	if(parent2->getLeft()!=NULL && parent2->getLeft()->getBlkName()==chos2->getBlkName())			side2 = 0;
+	else if(parent2->getRight()!=NULL && parent2->getRight()->getBlkName()==chos2->getBlkName())	side2 = 1;
+	else assert(0);
+	/*
+	cout << "chos2Name = "<< chos2->getBlkName();
+	cout << " parent2Name = " << parent2->getBlkName();
+	if(left2!=NULL)cout << " left2Name = " << left2->getBlkName() << " ";
+	if(right2!=NULL)cout << " right2Name = " << right2->getBlkName() << " ";
+	cout << side2 << endl;
+	*/
+	contrelation(chos2, parent1, left1, right1, side1);
+	contrelation(chos1, parent2, left2, right2, side2);
+}
+
+void Floorplanner::contrelation(Macro* chos, Macro* parent, Macro* left, Macro* right, bool side){
+	if(parent!=NULL) (side==0) ? parent->setLeft(chos) : parent->setRight(chos);
+	chos->setPrev(parent);
+	if(left!=NULL)	left->setPrev(chos);
+	chos->setLeft(left);
+	if(right!=NULL)right->setPrev(chos);
+	chos->setRight(right);
+}
+
 double Floorplanner::buildplan(double alpha, double& OutputX, double& OutputH, double &Wire){
-	coordinate(_BTreeRoot, _BTreeLvRoot, 0);
-	
+	coordinate(_BTreeRoot, _BTreeLvRoot);
 	size_t xmax = 0;
 	size_t ymax = 0;
 	Range(xmax, ymax);
@@ -226,95 +288,71 @@ double Floorplanner::buildplan(double alpha, double& OutputX, double& OutputH, d
 	double Area  = (double)xmax*ymax;
 	double Ratio = (double)ymax/xmax;
 	Wire  = Length();
-	
-	size_t xmore = 0;
-	if(xmax-width>0) xmore = xmax-width;
-	size_t ymore = 0;
-	if(ymax-height>0) ymore = ymax-height;
-	 
-	return xmore*xmore+ymore*ymore*(1+alpha)/2+(Wire/10000000)*(1-alpha)/2;
+
+	double xmore = max((int)xmax-(int)width, 0);
+	double ymore = max((int)ymax-(int)height, 0);
+	return xmore+ymore;
 }
 
-void Floorplanner::coordinate(Macro* root, Level* lvroot, bool side){
-	//First Block Case
-	size_t nowx = nowX(root, lvroot, side);
-	size_t nowy = nowY(root, lvroot, side, nowx);
-	bool ftcase = 0;
-	if(root->getBlkName()==""){
-		ftcase = 1;
-		root = root->getLeft();
+//Assume nowlev's height is old, update it!
+void Floorplanner::coordinate(Macro* nowmac, Level* nowlev){
+	if(nowmac==NULL)
+		return;	
+	if(nowmac->getBlkName()=="HEADMACRO"){
+		assert(_name2Blk.count(nowmac->getLeft()->getBlkName())>0);
+		coordinate(nowmac->getLeft(), new Level(0, 0));
+		return;
 	}
 	
-	root->setX(nowx);
-	root->setY(nowy);
-	Level* lvtmp = new Level( nowx, _name2Blk[root->getBlkName()]->getWidth(), nowy+_name2Blk[root->getBlkName()]->getHeight() );
-	if(_name2Mac.count(root->getBlkName()) == 0) _name2Mac[root->getBlkName()] = root;
-	
-	//Check whether some Level in front of lvtmp
-	Level* iter = lvroot;
-	while(iter->getNext()!=NULL){
-		iter = iter->getNext();
-		if( (iter->getX()+iter->getL()) > (nowx+_name2Blk[root->getBlkName()]->getWidth()) ) break;
-	}
-	//Left Child Case
-	if(lvtmp->getX()>lvroot->getX()){
-		lvroot->setNext(lvtmp);
-		lvtmp->setPrev(lvroot);		
-	}
-	//Right Child Case
-	else if(lvtmp->getX()==lvroot->getX()){
-		lvroot->setH(lvtmp->getH());
-		lvroot->setL(lvtmp->getL());
-		lvtmp = lvroot;
-	}
-	if( (iter->getX()+iter->getL()) > (nowx+_name2Blk[root->getBlkName()]->getWidth()) ){
-		//Exist!
-		lvtmp->setNext(iter);
-		iter->setPrev(lvtmp);
-		size_t end = iter->getX()+iter->getL();
-		iter->setX(nowx+_name2Blk[root->getBlkName()]->getWidth());
-		iter->setL( (iter->getX()+iter->getL())-(nowx+_name2Blk[root->getBlkName()]->getWidth())  );
-	}
+	assert(_name2Blk.count(nowmac->getBlkName())>0);
+	Level* updatelev= nowlev, * updatelevPrev;
+	size_t now_x_beg = nowlev->getX(), now_x_end = nowlev->getX() + _name2Blk[nowmac->getBlkName()]->getWidth();
+	size_t max_y, last_y;
+	while(updatelev!=NULL){
+		size_t current_x = updatelev->getX();
 
-	
-	if(root->getLeft()!=NULL)  coordinate(root->getLeft(), lvtmp, 0);
-	if(root->getRight()!=NULL) coordinate(root->getRight(), lvtmp, 1);
-	return;
-}
-
-size_t Floorplanner::nowX(Macro* root, Level* lvroot, bool side){
-	if(root->getBlkName()=="") return 0;
-	if(side == 0){
-		assert(_name2Blk.count(root->getPrev()->getBlkName()) > 0);
-		return ( root->getPrev()->getX() + _name2Blk[root->getPrev()->getBlkName()]->getWidth() );
-	}
-	else if(side == 1){
-		return root->getPrev()->getX();
-	}
-	return -1;
-}
-
-size_t Floorplanner::nowY(Macro* root, Level* lvroot, bool side, size_t nowx){
- 	if(root->getBlkName()=="") return 0;
-	if(side == 0){
-		size_t ans = 0;
-		Level* iter = lvroot;
-		while(iter->getNext()!=NULL && iter->getNext()->getX()<=(nowx+_name2Blk[root->getBlkName()]->getWidth()) ){
-			iter = iter->getNext();
-			if(iter->getX()>=nowx && iter->getH()>ans) ans = iter->getH();
+		if(current_x == now_x_beg){
+			max_y = updatelev->getH();
+			last_y = updatelev->getH();
 		}
-		return ans;
-	}
-	else if(side == 1){
-		size_t ans = lvroot->getH();
-		Level* iter = lvroot;
-		while(iter->getNext()!=NULL && iter->getNext()->getX()<=(nowx+_name2Blk[root->getBlkName()]->getWidth()) ){
-			iter = iter->getNext();
-			if(iter->getH()>ans) ans = iter->getH();
+		else if(current_x < now_x_end){
+			max_y = max(updatelev->getH(), max_y);
+			last_y = updatelev->getH();
 		}
-		return ans;
+		else if(current_x >= now_x_end){
+			break;
+		}
+		else
+			assert(0);
+		updatelevPrev = updatelev;
+		updatelev = updatelev->getNext();
 	}
-	return -1;
+	nowlev->setH(max_y+_name2Blk[nowmac->getBlkName()]->getHeight());
+	nowmac->setX(now_x_beg), nowmac->setY(max_y);
+	
+	/*Level* iter = nowlev, *iternext;
+	while( iter && (!updatelev&&(iter->getX()!=updatelevPrev->getX()) || updatelev&&(iter->getX()!=updatelev->getX())) ){
+		iternext = iter->getNext();
+		delete iter;
+		iter = iternext;
+	}*/
+
+	if(updatelev!=NULL&&updatelev->getX()==now_x_end){
+		nowlev->setNext(updatelev);
+		updatelev->setPrev(updatelev);
+		coordinate(nowmac->getLeft(), updatelev);
+	}
+	else{
+		Level* middle = new Level(now_x_end, last_y);
+		nowlev->setNext(middle);
+		middle->setPrev(nowlev);
+		if(updatelev!=NULL){
+			middle->setNext(updatelev);
+			updatelev->setPrev(middle);
+		}
+		coordinate(nowmac->getLeft(), middle);
+	}
+	coordinate(nowmac->getRight(), nowlev);
 }
 
 void Floorplanner::Range(size_t& xmax, size_t& ymax){
@@ -387,8 +425,6 @@ void Floorplanner::clear(){
 		iter = iter->getNext();
 		delete iter->getPrev();
 	} 
-	_BTreeLvRoot = new Level(0, 0, 0);
-	
-	_name2Mac.clear();
+	_BTreeLvRoot = new Level(0, 0);
 	return;
 }

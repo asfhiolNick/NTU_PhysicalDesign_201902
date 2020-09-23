@@ -1,13 +1,11 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <time.h>
 #include "floorplanner.h"
 using namespace std;
 
 int main(int argc, char** argv)
 {
-	srand( time(NULL) );
     fstream input_blk, input_net, output;
     double alpha;
 

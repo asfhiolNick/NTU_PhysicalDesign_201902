@@ -83,7 +83,8 @@ public:
 	const size_t getY()	{return _y; }
 	
 	// set functions
-	void setPrev(Macro* Prev) {_prev = Prev; }
+    void setName(string s) {_blkName = s; }
+ 	void setPrev(Macro* Prev) {_prev = Prev; }
 	void setRight(Macro* Right) {_right = Right; }
 	void setLeft(Macro* Left) {_left = Left; } 
 	void setX(size_t x)	{ _x = x; }
@@ -103,19 +104,17 @@ class Level
 {
 public:
 	// constructor and destructor
-	Level(size_t x, size_t length, size_t height): _x(x),_l(length), _h(height), _prev(NULL), _next(NULL){ }
+	Level(size_t x, size_t height): _x(x), _h(height), _prev(NULL), _next(NULL){ }
 	~Level() {	}
 	
 	// basic access methods
 	size_t getX() { return _x; }
-	size_t getL() { return _l;}
 	size_t getH() { return _h; }
 	Level* getPrev() { return _prev; }
 	Level* getNext() { return _next; }
 	
 	// set functions
 	void	setX(size_t x) { _x = x; }
-	void    setL(size_t l) { _l = l; }
 	void	setH(size_t h) { _h = h; }
 	void	setPrev(Level* Prev) {_prev = Prev; }
 	void	setNext(Level* Next) {_next = Next; }
@@ -123,7 +122,6 @@ public:
 	
 private:
 	size_t _x;
-	size_t _l;
 	size_t _h;
 	Level* _prev;
 	Level* _next; 

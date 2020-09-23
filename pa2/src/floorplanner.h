@@ -26,11 +26,13 @@ public:
     void parseInput_blk(fstream& input_blk);
     void parseInput_net(fstream& input_net);
     void floorplan(double);
+	void swaprelation(int, int);
+	void contrelation(Macro*, Macro*, Macro*, Macro*, bool);
     double buildplan(double, double&, double&, double&);
     void packing(Macro* root);
-    void coordinate(Macro* root, Level* lvroot, bool side);
-    size_t nowX(Macro* root, Level* lvroot, bool side);
-    size_t nowY(Macro* root, Level* lvroot, bool side, size_t nowx);
+    void coordinate(Macro* root, Level* lvroot);
+    //size_t nowX(Macro* root, Level* lvroot, bool side);
+    //size_t nowY(Macro* root, Level* lvroot, bool side, size_t nowx);
     void   Range(size_t& xmax, size_t& ymax);
     double Length();
     void report(double, fstream&);
@@ -39,8 +41,8 @@ public:
     
 
 private:
-	Macro*            _BTreeRoot = new Macro("");
-	Level*			  _BTreeLvRoot = new Level(0, 0, 0);
+	Macro*            _BTreeRoot = new Macro("HEADMACRO");
+	Level*			  _BTreeLvRoot = new Level(0, 0);
 	vector<Macro*>    _macList;
 	vector<Block*>    _blkList;
 	vector<Terminal*> _tmlList;
